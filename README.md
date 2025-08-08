@@ -16,7 +16,7 @@ Gerenciador visual de Flypaths (caminhos de voo) para servidores privados de Aio
 
 ---
 
-## 🎯 Funcionalidades
+## Funcionalidades
 
 - **Sincronização Bidirecional** entre cliente e emulador
 - **Criação Visual de Flypaths** com inserção automática em XML
@@ -30,7 +30,7 @@ Gerenciador visual de Flypaths (caminhos de voo) para servidores privados de Aio
 - Windows 10/11
 - Bibliotecas padrões (tkinter, xml.etree, datetime, etc.)
 
-## 🚀 Como Usar
+## Como Usar
 
 ```bash
 python flypath_manager.py
@@ -40,11 +40,11 @@ python flypath_manager.py
 2. Clique em **Sincronizar Arquivos** ou **Adicionar Novo Flypath**
 3. Para criar `.SEQ` standalone, use a opção **Criar Apenas SEQ**
 
-## 🔗 Links Oficiais
+## Links Oficiais
 
-- 🌐 Site: [aionclassicbrasil.com](http://aionclassicbrasil.com)
-- 💬 Discord: [discord.gg/SKCVjHd7j9](https://discord.gg/SKCVjHd7j9)
-- 📦 Projeto Principal: [Old Class Server](https://github.com/kamidaki/old-class-server)
+- Site: [aionclassicbrasil.com](http://aionclassicbrasil.com)
+- Discord: [discord.gg/SKCVjHd7j9](https://discord.gg/SKCVjHd7j9)
+- Projeto Principal: [Old Class Server](https://github.com/kamidaki/old-class-server)
 
 ## 📄 Licença
 
