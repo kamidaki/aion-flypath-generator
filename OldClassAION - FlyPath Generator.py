@@ -6,7 +6,27 @@ import os
 import shutil
 import re
 from xml.dom import minidom
+import base64
+import webbrowser
+import io
 
+# Tentar importar PIL, com fallback se não estiver disponível
+try:
+    from PIL import Image, ImageTk
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+    print("AVISO: Pillow não encontrado. Para exibir o logo, instale com: pip install Pillow")
+
+def convert_image_to_base64(image_path):
+    """Função utilitária para converter uma imagem para base64"""
+    try:
+        with open(image_path, "rb") as img_file:
+            img_data = img_file.read()
+            return base64.b64encode(img_data).decode('utf-8')
+    except Exception as e:
+        print(f"Erro ao converter imagem: {e}")
+        return None
 
 class FlypathManager:
     def __init__(self, root):
@@ -19,7 +39,10 @@ class FlypathManager:
         self.emulator_file = tk.StringVar()
         self.seq_counter = 1
 
-        # Mapas de world ID para world name (cName)
+        # Tentar carregar o logo
+        self.logo_base64 = None
+        self.load_logo_from_file()
+
         # Mapas de world ID para world name (cName)
         self.world_map = {
             # Elyos Cities
@@ -219,14 +242,76 @@ class FlypathManager:
 
         self.setup_ui()
 
+    def load_logo_from_file(self):
+        """Carrega o logo do arquivo especificado"""
+        logo_path = r"F:\Servidor Aion\OLD CLASS SERVER\EDIT - CLIENT FILES\FOTOS\LOGO_04.png"
+        try:
+            if os.path.exists(logo_path):
+                self.logo_base64 = convert_image_to_base64(logo_path)
+                print("Logo carregado com sucesso!")
+            else:
+                print(f"Logo não encontrado em: {logo_path}")
+                self.create_default_logo()
+        except Exception as e:
+            print(f"Erro ao carregar logo: {e}")
+            self.create_default_logo()
+
+    def create_default_logo(self):
+        """Cria um logo padrão se o arquivo não for encontrado"""
+        # Logo padrão simples (texto estilizado)
+        self.logo_base64 = None
+
+    def open_website(self, url):
+        """Abre o site no navegador padrão"""
+        webbrowser.open(url)
+
     def setup_ui(self):
         # Frame principal
         main_frame = ttk.Frame(self.root, padding="10")
         main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
+        # Frame do logo no topo
+        logo_frame = ttk.Frame(main_frame)
+        logo_frame.grid(row=0, column=0, columnspan=2, pady=(0, 15))
+
+        # Tentar exibir o logo
+        try:
+            if self.logo_base64 and PIL_AVAILABLE:
+                # Decodificar base64 e criar imagem
+                logo_data = base64.b64decode(self.logo_base64)
+                logo_image = Image.open(io.BytesIO(logo_data))
+
+                # Redimensionar se necessário (manter proporção)
+                logo_width, logo_height = logo_image.size
+                max_width = 100
+                if logo_width > max_width:
+                    ratio = max_width / logo_width
+                    new_width = int(logo_width * ratio)
+                    new_height = int(logo_height * ratio)
+                    logo_image = logo_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+                # Converter para PhotoImage
+                self.logo_photo = ImageTk.PhotoImage(logo_image)
+                logo_label = ttk.Label(logo_frame, image=self.logo_photo)
+                logo_label.pack()
+            else:
+                # Se não houver logo, mostrar texto estilizado
+                title_label = ttk.Label(logo_frame, text="OLD CLASS SERVER",
+                                        font=('Arial', 20, 'bold'), foreground='blue')
+                title_label.pack()
+                subtitle_label = ttk.Label(logo_frame, text="Aion Flypath Manager",
+                                           font=('Arial', 12))
+                subtitle_label.pack()
+        except Exception as e:
+            print(f"Erro ao exibir logo: {e}")
+            # Fallback para texto
+            title_label = ttk.Label(logo_frame, text="OLD CLASS SERVER",
+                                    font=('Arial', 16, 'bold'))
+            title_label.pack()
+
         # Configuração de arquivos
         files_frame = ttk.LabelFrame(main_frame, text="Configuração de Arquivos", padding="10")
-        files_frame.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 10))
+        files_frame.grid(row=1, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 10))
 
         # Cliente XML
         ttk.Label(files_frame, text="Arquivo XML do Cliente:").grid(row=0, column=0, sticky=tk.W, padx=(0, 5))
@@ -242,7 +327,7 @@ class FlypathManager:
 
         # Botões principais
         buttons_frame = ttk.Frame(main_frame)
-        buttons_frame.grid(row=1, column=0, columnspan=2, pady=(0, 10))
+        buttons_frame.grid(row=2, column=0, columnspan=2, pady=(0, 10))
 
         ttk.Button(buttons_frame, text="Sincronizar Arquivos", command=self.sync_files).pack(side=tk.LEFT, padx=(0, 10))
         ttk.Button(buttons_frame, text="Adicionar Novo Flypath", command=self.open_add_flypath_window).pack(
@@ -251,13 +336,27 @@ class FlypathManager:
 
         # Log area
         log_frame = ttk.LabelFrame(main_frame, text="Log de Operações", padding="10")
-        log_frame.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
+        log_frame.grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
 
-        self.log_text = scrolledtext.ScrolledText(log_frame, height=20, width=80)
+        self.log_text = scrolledtext.ScrolledText(log_frame, height=15, width=80)
         self.log_text.pack(fill=tk.BOTH, expand=True)
 
+        # Frame do rodapé com hiperlink
+        footer_frame = ttk.Frame(main_frame)
+        footer_frame.grid(row=4, column=0, columnspan=2, pady=(10, 0))
+
+        # Texto e hiperlink
+        footer_text = ttk.Label(footer_frame, text="Acesse o Site do OLD CLASS: ")
+        footer_text.pack(side=tk.LEFT)
+
+        # Link clicável
+        link_label = ttk.Label(footer_frame, text="https://aionclassicbrasil.com/",
+                               foreground="blue", cursor="hand2")
+        link_label.pack(side=tk.LEFT)
+        link_label.bind("<Button-1>", lambda e: self.open_website("https://aionclassicbrasil.com/"))
+
         # Configurar grid weights
-        main_frame.rowconfigure(2, weight=1)
+        main_frame.rowconfigure(3, weight=1)
         main_frame.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
         self.root.columnconfigure(0, weight=1)
