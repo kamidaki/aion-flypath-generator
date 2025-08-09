@@ -662,8 +662,12 @@ class FlypathManager:
     def check_seq_file_exists(self, seq_filename):
         """Verifica se o arquivo SEQ existe no diretório do cliente"""
         try:
-            client_dir = os.path.dirname(self.client_file.get())
-            seq_path = os.path.join(client_dir, seq_filename)
+            if self.client_file.get():
+                client_dir = os.path.dirname(self.client_file.get())
+                seq_path = os.path.join(client_dir, seq_filename)
+            else:
+                script_dir = os.path.dirname(os.path.abspath(__file__))
+                seq_path = os.path.join(script_dir, seq_filename)
 
             if os.path.exists(seq_path):
                 self.log(f"✓ Arquivo SEQ encontrado: {seq_filename}")
@@ -707,9 +711,16 @@ class FlypathManager:
     def create_seq_file(self, flypath_id, data):
         """Cria arquivo .seq baseado no template com trajetória calculada"""
         try:
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            seq_filename = data.get('file', f"OLDCLASS_BATTLEROYALE_{self.seq_counter:02d}.seq")
-            seq_path = os.path.join(script_dir, seq_filename)
+            # CORREÇÃO: Salvar na pasta do arquivo do cliente se disponível
+            if self.client_file.get():
+                client_dir = os.path.dirname(self.client_file.get())
+                seq_filename = data.get('file', f"OLDCLASS_BATTLEROYALE_{self.seq_counter:02d}.seq")
+                seq_path = os.path.join(client_dir, seq_filename)
+            else:
+                # Fallback para pasta do script/exe
+                script_dir = os.path.dirname(os.path.abspath(__file__))
+                seq_filename = data.get('file', f"OLDCLASS_BATTLEROYALE_{self.seq_counter:02d}.seq")
+                seq_path = os.path.join(script_dir, seq_filename)
 
             # Remover extensão .seq do nome para usar no Name
             seq_name = os.path.splitext(seq_filename)[0]
@@ -980,6 +991,7 @@ class FlypathManager:
                 f.write(seq_content)
 
             self.log(f"Arquivo SEQ criado: {seq_filename}")
+            self.log(f"Localização: {os.path.dirname(seq_path)}")
 
         except Exception as e:
             self.log(f"Erro ao criar arquivo SEQ para ID {flypath_id}: {str(e)}")
@@ -1197,7 +1209,6 @@ class FlypathManager:
                     messagebox.showerror("Erro", f"Tempo de trajetória deve estar entre 0 e {total_time}")
                     return
 
-
             # Parse dos arquivos
             client_tree = ET.parse(self.client_file.get())
             client_root = client_tree.getroot()
@@ -1260,16 +1271,7 @@ class FlypathManager:
             new_flypath.set('eworld', self.world_id.get())
             new_flypath.set('time', self.fly_time.get())
 
-            manual_trajectory = []
-            for t_var, x_var, y_var, z_var in self.trajectory_points:
-                if t_var.get().strip() and x_var.get().strip() and y_var.get().strip() and z_var.get().strip():
-                    manual_trajectory.append({
-                        'time': float(t_var.get()),
-                        'x': float(x_var.get()),
-                        'y': float(y_var.get()),
-                        'z': float(z_var.get())
-                    })
-
+            # CORREÇÃO: Preparar dados corretos para criação do SEQ
             seq_data = {
                 'sx': self.start_x.get(),
                 'sy': self.start_y.get(),
@@ -1281,9 +1283,10 @@ class FlypathManager:
                 'eworld': self.world_name.get(),
                 'time': self.fly_time.get(),
                 'file': seq_filename,
-                'manual_trajectory': manual_trajectory
+                'manual_trajectory': manual_trajectory if manual_trajectory else None
             }
 
+            # Criar arquivo SEQ
             self.create_seq_file(self.new_id.get(), seq_data)
 
             # Salvar arquivos
@@ -1511,8 +1514,30 @@ class FlypathManager:
                 messagebox.showerror("Erro", "Todos os campos de coordenadas e tempo devem ser preenchidos!")
                 return
 
-            # Debug: Log para verificar se estamos processando os pontos corretamente
-            self.log("DEBUG: Processando pontos de trajetória...")
+            # CORREÇÃO: Validação mais flexível para números
+            def validate_float(value):
+                """Valida se o valor pode ser convertido para float"""
+                try:
+                    return float(value.strip().replace(',', '.'))
+                except (ValueError, AttributeError):
+                    return None
+
+            # Validar valores numéricos
+            time_val = validate_float(self.seq_fly_time.get())
+            start_x_val = validate_float(self.seq_start_x.get())
+            start_y_val = validate_float(self.seq_start_y.get())
+            start_z_val = validate_float(self.seq_start_z.get())
+            end_x_val = validate_float(self.seq_end_x.get())
+            end_y_val = validate_float(self.seq_end_y.get())
+            end_z_val = validate_float(self.seq_end_z.get())
+
+            if any(v is None for v in
+                   [time_val, start_x_val, start_y_val, start_z_val, end_x_val, end_y_val, end_z_val]):
+                messagebox.showerror("Erro", "Por favor, verifique se todos os valores numéricos são válidos!")
+                return
+
+            self.log(
+                f"DEBUG: Valores validados - Tempo: {time_val}, Início: ({start_x_val}, {start_y_val}, {start_z_val}), Fim: ({end_x_val}, {end_y_val}, {end_z_val})")
 
             # Processar pontos de trajetória intermediários
             manual_trajectory = []
@@ -1522,55 +1547,52 @@ class FlypathManager:
                 y_str = y_var.get().strip()
                 z_str = z_var.get().strip()
 
-                # Ignorar placeholders
-                if (time_str in ["ex: 10", ""] or
-                        x_str in ["ex: 1000.5", ""] or
-                        y_str in ["ex: 2000.3", ""] or
-                        z_str in ["ex: 500.0", ""]):
+                # CORREÇÃO: Verificação mais rigorosa dos placeholders
+                placeholder_texts = ["ex: 10", "ex: 1000.5", "ex: 2000.3", "ex: 500.0", ""]
+
+                # Pular se algum campo está vazio ou é placeholder
+                if (not time_str or not x_str or not y_str or not z_str or
+                        time_str in placeholder_texts or x_str in placeholder_texts or
+                        y_str in placeholder_texts or z_str in placeholder_texts):
                     continue
 
-                # Se todos os campos estão preenchidos
-                if time_str and x_str and y_str and z_str:
-                    try:
-                        time_value = float(time_str)
-                        x_value = float(x_str)
-                        y_value = float(y_str)
-                        z_value = float(z_str)
+                # Se todos os campos estão preenchidos com valores válidos
+                time_value = validate_float(time_str)
+                x_value = validate_float(x_str)
+                y_value = validate_float(y_str)
+                z_value = validate_float(z_str)
 
-                        manual_trajectory.append({
-                            'time': time_value,
-                            'x': x_value,
-                            'y': y_value,
-                            'z': z_value
-                        })
-
-                        self.log(
-                            f"DEBUG: Ponto {i + 1} adicionado: tempo={time_value}, x={x_value}, y={y_value}, z={z_value}")
-
-                    except ValueError as ve:
-                        self.log(f"Valor inválido na linha {i + 1}: {time_str}, {x_str}, {y_str}, {z_str} - Erro: {ve}")
-                        messagebox.showerror("Erro",
-                                             f"Valores inválidos na linha {i + 1} da trajetória.\nVerifique se todos são números válidos.")
-                        return
+                if all(v is not None for v in [time_value, x_value, y_value, z_value]):
+                    manual_trajectory.append({
+                        'time': time_value,
+                        'x': x_value,
+                        'y': y_value,
+                        'z': z_value
+                    })
+                    self.log(
+                        f"DEBUG: Ponto {i + 1} adicionado: tempo={time_value}, x={x_value}, y={y_value}, z={z_value}")
+                else:
+                    self.log(
+                        f"DEBUG: Ponto {i + 1} ignorado por valores inválidos: {time_str}, {x_str}, {y_str}, {z_str}")
 
             # Log do resultado do processamento
             self.log(f"DEBUG: Total de pontos processados: {len(manual_trajectory)}")
 
             # Ordenar pontos por tempo
-            manual_trajectory.sort(key=lambda p: p['time'])
+            if manual_trajectory:
+                manual_trajectory.sort(key=lambda p: p['time'])
 
-            # Verificar se tempos dos pontos intermediários são válidos
-            total_time = float(self.seq_fly_time.get())
-            for point in manual_trajectory:
-                if point['time'] <= 0 or point['time'] >= total_time:
-                    messagebox.showerror("Erro",
-                                         f"Pontos de trajetória devem ter tempo entre 0 e {total_time} segundos.\n"
-                                         f"Ponto inválido: tempo {point['time']}\n\n"
-                                         f"Lembre-se:\n"
-                                         f"• Tempo 0: coordenadas de início (automático)\n"
-                                         f"• Tempo {total_time}: coordenadas de destino (automático)\n"
-                                         f"• Pontos intermediários: entre 0.1 e {total_time - 0.1}")
-                    return
+                # Verificar se tempos dos pontos intermediários são válidos
+                for point in manual_trajectory:
+                    if point['time'] <= 0 or point['time'] >= time_val:
+                        messagebox.showerror("Erro",
+                                             f"Pontos de trajetória devem ter tempo entre 0 e {time_val} segundos.\n"
+                                             f"Ponto inválido: tempo {point['time']}\n\n"
+                                             f"Lembre-se:\n"
+                                             f"• Tempo 0: coordenadas de início (automático)\n"
+                                             f"• Tempo {time_val}: coordenadas de destino (automático)\n"
+                                             f"• Pontos intermediários: entre 0.1 e {time_val - 0.1}")
+                        return
 
             # Preparar nome do arquivo
             base_filename = self.seq_filename.get().strip()
@@ -1584,17 +1606,23 @@ class FlypathManager:
 
             seq_filename = f"{base_filename}.seq"
 
+            # CORREÇÃO: Determinar pasta de salvamento
+            if self.client_file.get():
+                save_directory = os.path.dirname(self.client_file.get())
+            else:
+                save_directory = os.path.dirname(os.path.abspath(__file__))
+
             # Preparar dados para criação do SEQ
             seq_data = {
-                'sx': self.seq_start_x.get(),
-                'sy': self.seq_start_y.get(),
-                'sz': self.seq_start_z.get(),
+                'sx': str(start_x_val),
+                'sy': str(start_y_val),
+                'sz': str(start_z_val),
                 'sworld': self.seq_world_name.get(),
-                'ex': self.seq_end_x.get(),
-                'ey': self.seq_end_y.get(),
-                'ez': self.seq_end_z.get(),
+                'ex': str(end_x_val),
+                'ey': str(end_y_val),
+                'ez': str(end_z_val),
                 'eworld': self.seq_world_name.get(),
-                'time': self.seq_fly_time.get(),
+                'time': str(time_val),
                 'file': seq_filename,
                 'manual_trajectory': manual_trajectory if manual_trajectory else None
             }
@@ -1602,6 +1630,8 @@ class FlypathManager:
             # Log final antes de criar o arquivo
             if manual_trajectory:
                 self.log(f"DEBUG: Criando SEQ com {len(manual_trajectory)} pontos intermediários")
+                for i, point in enumerate(manual_trajectory, 1):
+                    self.log(f"  Ponto {i}: tempo={point['time']}, pos=({point['x']}, {point['y']}, {point['z']})")
             else:
                 self.log("DEBUG: Criando SEQ com trajetória automática")
 
@@ -1609,12 +1639,11 @@ class FlypathManager:
             self.create_seq_file("STANDALONE", seq_data)
 
             self.log(f"Arquivo SEQ standalone criado: {seq_filename}")
-            self.log(f"Localização: {os.path.dirname(os.path.abspath(__file__))}")
+            self.log(f"Pasta de salvamento: {save_directory}")
 
             # Log detalhado da trajetória
             self.log(f"Trajetória criada:")
-            self.log(
-                f"  • Tempo 0: Início X={self.seq_start_x.get()}, Y={self.seq_start_y.get()}, Z={self.seq_start_z.get()}")
+            self.log(f"  • Tempo 0: Início X={start_x_val}, Y={start_y_val}, Z={start_z_val}")
 
             if manual_trajectory:
                 self.log(f"  • {len(manual_trajectory)} pontos intermediários:")
@@ -1623,14 +1652,13 @@ class FlypathManager:
             else:
                 self.log("  • Trajetória automática (sem pontos intermediários)")
 
-            self.log(
-                f"  • Tempo {total_time}: Destino X={self.seq_end_x.get()}, Y={self.seq_end_y.get()}, Z={self.seq_end_z.get()}")
+            self.log(f"  • Tempo {time_val}: Destino X={end_x_val}, Y={end_y_val}, Z={end_z_val}")
 
             self.seq_window.destroy()
             messagebox.showinfo("Sucesso",
                                 f"Arquivo SEQ criado com sucesso!\n\n"
                                 f"Arquivo: {seq_filename}\n"
-                                f"Localização: {os.path.dirname(os.path.abspath(__file__))}\n\n"
+                                f"Localização: {save_directory}\n\n"
                                 f"Trajetória: {'Personalizada' if manual_trajectory else 'Automática'}\n"
                                 f"Pontos intermediários: {len(manual_trajectory) if manual_trajectory else 0}")
 
